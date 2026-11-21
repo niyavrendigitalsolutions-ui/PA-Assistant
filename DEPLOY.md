@@ -1,5 +1,19 @@
 # Deploy guide
 
+## Quick path: let GitHub do it (no command line needed)
+
+1. Create a Fly **organization token** (Fly dashboard > Tokens) and add three repository secrets in
+   GitHub (Settings > Secrets and variables > Actions): `FLY_API_TOKEN`, `ANTHROPIC_API_KEY`, and
+   `ASSISTANT_ACCESS_TOKEN` (your own long random password for the chat page, 16+ characters).
+2. Actions tab > **Bootstrap Fly apps** > Run workflow. It creates both apps, their disks and secrets.
+   Emails start in "everything needs my approval" mode (`AUTONOMY=off`).
+3. Actions tab > **Test and deploy** > Run workflow. After that, every push to `main` redeploys.
+4. Open `https://niyavren-assistant.fly.dev` and enter your access token.
+
+Optional repository variables: `FLY_APP_NAME`, `FLY_SANDBOX_APP_NAME` (if the default names are taken),
+`FLY_ORG`, `TRUSTED_RECIPIENTS`. Optional secrets for Gmail/Calendar: the three `GOOGLE_*` values.
+The command-line path below does the same thing by hand.
+
 You do these steps because they need your accounts. Keep every secret out of git.
 
 ## 1. Code on GitHub
@@ -73,10 +87,10 @@ Finished projects appear as **Download** buttons on the chat page.
 ## 4. Turn on auto-deploy from GitHub
 
 ```bash
-fly tokens create deploy      # copy the output
+fly tokens create org      # copy the output
 ```
 GitHub repo > Settings > Secrets and variables > Actions > New secret: `FLY_API_TOKEN`.
-For the sandbox app run `fly tokens create deploy --app <sandbox-app>` and save it as `FLY_SANDBOX_API_TOKEN`.
+One organization token (`fly tokens create org`) works for both apps, so a single `FLY_API_TOKEN` secret is enough.
 
 From now on every push to `main` runs the tests, then deploys both apps. Pull requests only run tests.
 

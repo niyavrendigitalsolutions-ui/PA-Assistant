@@ -1,0 +1,81 @@
+name: Bootstrap Fly apps
+
+# Run once by hand (Actions tab > Bootstrap Fly apps > Run workflow).
+# Creates the two Fly apps and their volumes, and sets their secrets. Safe to re-run:
+# anything that already exists is left alone. Then run "Test and deploy" to ship the code.
+#
+# Repository secrets used:   FLY_API_TOKEN (org token), ANTHROPIC_API_KEY, ASSISTANT_ACCESS_TOKEN
+#   optional:                GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET, GOOGLE_REFRESH_TOKEN
+# Repository variables (optional): FLY_ORG, FLY_APP_NAME, FLY_SANDBOX_APP_NAME, TRUSTED_RECIPIENTS
+
+on:
+  workflow_dispatch:
+
+jobs:
+  bootstrap:
+    runs-on: ubuntu-latest
+    env:
+      FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
+      ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+      ASSISTANT_ACCESS_TOKEN: ${{ secrets.ASSISTANT_ACCESS_TOKEN }}
+      GOOGLE_CLIENT_ID: ${{ secrets.GOOGLE_CLIENT_ID }}
+      GOOGLE_CLIENT_SECRET: ${{ secrets.GOOGLE_CLIENT_SECRET }}
+      GOOGLE_REFRESH_TOKEN: ${{ secrets.GOOGLE_REFRESH_TOKEN }}
+      ORG: ${{ vars.FLY_ORG || 'niyavrendigitalsolutions-gmail-com' }}
+      APP: ${{ vars.FLY_APP_NAME || 'niyavren-assistant' }}
+      SANDBOX_APP: ${{ vars.FLY_SANDBOX_APP_NAME || 'niyavren-sandbox' }}
+      TRUSTED: ${{ vars.TRUSTED_RECIPIENTS }}
+    steps:
+      - uses: superfly/flyctl-actions/setup-flyctl@master
+
+      - name: Check required secrets
+        run: |
+          for v in FLY_API_TOKEN ANTHROPIC_API_KEY ASSISTANT_ACCESS_TOKEN; do
+            if [ -z "${!v}" ]; then echo "::error::Repository secret $v is missing"; exit 1; fi
+          done
+          if [ "${#ASSISTANT_ACCESS_TOKEN}" -lt 16 ]; then
+            echo "::error::ASSISTANT_ACCESS_TOKEN must be at least 16 characters"; exit 1
+          fi
+
+      - name: Create apps (if missing)
+        run: |
+          for a in "$APP" "$SANDBOX_APP"; do
+            if flyctl apps list --org "$ORG" --json | jq -e --arg a "$a" '.[] | select(.Name == $a)' >/dev/null; then
+              echo "App $a already exists"
+            else
+              flyctl apps create "$a" --org "$ORG"
+            fi
+          done
+
+      - name: Create volumes (if missing)
+        run: |
+          ensure_volume () {  # app, volume name, size GB
+            if flyctl volumes list --app "$1" --json | jq -e --arg v "$2" '.[] | select(.name == $v)' >/dev/null; then
+              echo "Volume $2 already exists on $1"
+            else
+              flyctl volumes create "$2" --app "$1" --region bom --size "$3" --yes
+            fi
+          }
+          ensure_volume "$APP" assistant_data 1
+          ensure_volume "$SANDBOX_APP" sandbox_data 3
+
+      - name: Set secrets
+        run: |
+          # One shared token lets the assistant talk to the sandbox. Created once, never printed.
+          if flyctl secrets list --app "$SANDBOX_APP" --json | jq -e '.[] | select(.name == "SANDBOX_TOKEN")' >/dev/null; then
+            echo "SANDBOX_TOKEN already set; leaving the sandbox pair unchanged"
+            PAIR=()
+          else
+            SBT="$(openssl rand -base64 36 | tr -d '/+=\n')"
+            echo "::add-mask::$SBT"
+            flyctl secrets set --stage --app "$SANDBOX_APP" SANDBOX_TOKEN="$SBT"
+            PAIR=("SANDBOX_TOKEN=$SBT" "SANDBOX_URL=https://$SANDBOX_APP.fly.dev")
+          fi
+          ARGS=("ANTHROPIC_API_KEY=$ANTHROPIC_API_KEY" "ASSISTANT_ACCESS_TOKEN=$ASSISTANT_ACCESS_TOKEN"
+                "AUTONOMY=off" "TRUSTED_RECIPIENTS=$TRUSTED" "${PAIR[@]}")
+          if [ -n "$GOOGLE_CLIENT_ID" ] && [ -n "$GOOGLE_CLIENT_SECRET" ] && [ -n "$GOOGLE_REFRESH_TOKEN" ]; then
+            ARGS+=("GOOGLE_CLIENT_ID=$GOOGLE_CLIENT_ID" "GOOGLE_CLIENT_SECRET=$GOOGLE_CLIENT_SECRET"
+                   "GOOGLE_REFRESH_TOKEN=$GOOGLE_REFRESH_TOKEN")
+          fi
+          flyctl secrets set --stage --app "$APP" "${ARGS[@]}"
+          echo "Done. AUTONOMY is 'off' (every email waits for approval) until you change it."

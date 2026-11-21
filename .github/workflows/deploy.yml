@@ -4,6 +4,7 @@ on:
   push:
     branches: [main]
   pull_request:
+  workflow_dispatch:
 
 jobs:
   test:
@@ -20,24 +21,36 @@ jobs:
 
   deploy:
     needs: test
-    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     concurrency: deploy-group   # never run two deploys at once
+    env:
+      FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
+      APP: ${{ vars.FLY_APP_NAME || 'niyavren-assistant' }}
     steps:
       - uses: actions/checkout@v4
       - uses: superfly/flyctl-actions/setup-flyctl@master
-      - run: flyctl deploy --remote-only
-        env:
-          FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
+      - name: Deploy assistant
+        if: ${{ env.FLY_API_TOKEN != '' }}
+        run: flyctl deploy --remote-only --ha=false --app "$APP"
+      - name: Skipped
+        if: ${{ env.FLY_API_TOKEN == '' }}
+        run: echo "FLY_API_TOKEN secret is not set yet, so nothing was deployed. Run the Bootstrap workflow after adding it."
 
   deploy-sandbox:
     needs: test
-    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     concurrency: deploy-sandbox-group
+    env:
+      FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
+      SANDBOX_APP: ${{ vars.FLY_SANDBOX_APP_NAME || 'niyavren-sandbox' }}
     steps:
       - uses: actions/checkout@v4
       - uses: superfly/flyctl-actions/setup-flyctl@master
-      - run: flyctl deploy --remote-only --config fly.sandbox.toml
-        env:
-          FLY_API_TOKEN: ${{ secrets.FLY_SANDBOX_API_TOKEN }}
+      - name: Deploy sandbox
+        if: ${{ env.FLY_API_TOKEN != '' }}
+        run: flyctl deploy --remote-only --ha=false --config fly.sandbox.toml --app "$SANDBOX_APP"
+      - name: Skipped
+        if: ${{ env.FLY_API_TOKEN == '' }}
+        run: echo "FLY_API_TOKEN secret is not set yet, so nothing was deployed."
