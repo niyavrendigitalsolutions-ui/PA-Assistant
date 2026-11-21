@@ -21,6 +21,7 @@ import storage
 SCOPES = [
     "https://www.googleapis.com/auth/gmail.readonly",
     "https://www.googleapis.com/auth/gmail.compose",
+    "https://www.googleapis.com/auth/gmail.send",
     "https://www.googleapis.com/auth/calendar.events",
 ]
 REQUIRED_ENV = ("GOOGLE_CLIENT_ID", "GOOGLE_CLIENT_SECRET", "GOOGLE_REFRESH_TOKEN")
@@ -131,6 +132,19 @@ def _gmail_draft(a: dict):
     d = _service("gmail", "v1").users().drafts().create(
         userId="me", body={"message": {"raw": raw}}).execute()
     return f"Draft saved in Gmail (id {d['id']}). Nothing was sent; the user must open and send it."
+
+
+def send_email(to: str, subject: str, body: str) -> str:
+    """Actually send an email. Only business.py may call this, after its policy checks."""
+    to = to.strip()
+    if not _EMAIL.match(to):
+        raise ValueError("'to' must be a single valid email address.")
+    msg = EmailMessage()
+    msg["To"], msg["Subject"] = to, subject.strip()
+    msg.set_content(body)
+    raw = base64.urlsafe_b64encode(msg.as_bytes()).decode()
+    sent = _service("gmail", "v1").users().messages().send(userId="me", body={"raw": raw}).execute()
+    return sent["id"]
 
 
 # ---------- Calendar ----------

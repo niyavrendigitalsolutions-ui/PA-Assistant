@@ -1,0 +1,33 @@
+# Second Fly app: the isolated code sandbox. It holds NO API keys, only SANDBOX_TOKEN.
+# Change `app` to a unique name.
+app = "niyavren-sandbox"
+primary_region = "bom"
+
+[build]
+  dockerfile = "sandbox/Dockerfile"
+
+[env]
+  WORKSPACE_DIR = "/workspace"
+
+[mounts]
+  source = "sandbox_data"
+  destination = "/workspace"
+
+[http_service]
+  internal_port = 8080
+  force_https = true
+  auto_stop_machines = "stop"      # sleeps when idle; wakes on the next request
+  auto_start_machines = true
+  min_machines_running = 0
+
+  [[http_service.checks]]
+    grace_period = "20s"
+    interval = "60s"
+    method = "GET"
+    path = "/health"
+    timeout = "5s"
+
+[[vm]]
+  memory = "1gb"
+  cpu_kind = "shared"
+  cpus = 1

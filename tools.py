@@ -180,9 +180,13 @@ TOOL_NAMES = [f"mcp__{SERVER_NAME}__{t.name}" for t in ALL_TOOLS]  # built-in to
 
 
 def active_tools() -> list:
-    """Built-in tools, plus Gmail/Calendar when Google credentials are configured."""
+    """Built-in and business tools, plus Gmail/Calendar and the code sandbox when configured."""
+    import business_tools
     import google_tools
-    return ALL_TOOLS + (google_tools.TOOLS if google_tools.configured() else [])
+    import sandbox_tools
+    return (ALL_TOOLS + business_tools.TOOLS
+            + (google_tools.TOOLS if google_tools.configured() else [])
+            + (sandbox_tools.TOOLS if sandbox_tools.configured() else []))
 
 
 def tool_names() -> list[str]:

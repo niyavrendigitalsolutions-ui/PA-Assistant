@@ -15,11 +15,15 @@ DATA_FILE = DATA_DIR / "data.json"
 _lock = threading.Lock()
 
 EMPTY = {"facts": {}, "tasks": [], "notes": [], "reminders": [],
-         "lessons": [], "skills": {}, "improvements": []}
+         "lessons": [], "skills": {}, "improvements": [],
+         "leads": [], "approvals": [], "activity": []}
 
 MAX_LESSONS, MAX_SKILLS, MAX_IMPROVEMENTS = 200, 100, 100
 LESSON_KINDS = ("preference", "correction", "how_to", "general")
 IMPROVEMENT_KINDS = ("capability_gap", "prompt_change", "bug", "other")
+LEAD_STAGES = ("new", "contacted", "proposal", "negotiation", "won", "lost")
+MAX_ACTIVITY, MAX_LEADS = 500, 1000
+APPROVAL_TTL_DAYS = 7
 
 
 def now() -> datetime:
@@ -346,3 +350,148 @@ def resolve_improvement(improvement_id: str, status: str = "done") -> str:
                 _save(data)
                 return f"Marked {status}."
     return f"No proposal with id {improvement_id}."
+
+
+# ---- business: activity log (audit trail) ----
+def log_activity(kind: str, summary: str, status: str, detail: str = "") -> None:
+    with _lock:
+        data = _load()
+        data["activity"].append({"id": _new_id(), "kind": kind, "summary": summary[:300],
+                                 "status": status, "detail": detail[:500],
+                                 "created": now().isoformat()})
+        del data["activity"][:-MAX_ACTIVITY]
+        _save(data)
+
+
+def list_activity(limit: int = 50) -> list[dict]:
+    with _lock:
+        items = _load()["activity"]
+    return list(reversed(items))[:limit]
+
+
+def count_sent_today(to: str | None = None) -> int:
+    today = now().date().isoformat()
+    with _lock:
+        items = _load()["activity"]
+    return sum(1 for a in items
+               if a["kind"] == "email" and a["status"] == "sent" and a["created"][:10] == today
+               and (to is None or a.get("detail", "").lower() == to.lower()))
+
+
+# ---- business: approval queue (only the human can resolve; the model has no tool for it) ----
+def add_approval(kind: str, summary: str, reason: str, payload: dict) -> str:
+    with _lock:
+        data = _load()
+        item = {"id": _new_id(), "kind": kind, "summary": summary[:300], "reason": reason,
+                "payload": payload, "status": "pending", "created": now().isoformat()}
+        data["approvals"].append(item)
+        _save(data)
+    return item["id"]
+
+
+def _expire(data: dict) -> bool:
+    from datetime import timedelta
+    cutoff = (now() - timedelta(days=APPROVAL_TTL_DAYS)).isoformat()
+    changed = False
+    for a in data["approvals"]:
+        if a["status"] == "pending" and a["created"] < cutoff:
+            a["status"], changed = "expired", True
+    return changed
+
+
+def list_approvals(status: str = "pending") -> list[dict]:
+    with _lock:
+        data = _load()
+        if _expire(data):
+            _save(data)
+        items = data["approvals"]
+    return [a for a in items if status == "all" or a["status"] == status]
+
+
+def claim_approval(approval_id: str) -> dict | None:
+    """Atomically move pending -> executing so a double click can never act twice."""
+    with _lock:
+        data = _load()
+        _expire(data)
+        for a in data["approvals"]:
+            if a["id"] == approval_id and a["status"] == "pending":
+                a["status"] = "executing"
+                _save(data)
+                return dict(a)
+        _save(data)
+    return None
+
+
+def finish_approval(approval_id: str, status: str, result: str = "") -> None:
+    with _lock:
+        data = _load()
+        for a in data["approvals"]:
+            if a["id"] == approval_id:
+                a["status"], a["result"] = status, result[:500]
+                a["resolved"] = now().isoformat()
+        _save(data)
+
+
+def reject_approval(approval_id: str) -> bool:
+    with _lock:
+        data = _load()
+        for a in data["approvals"]:
+            if a["id"] == approval_id and a["status"] == "pending":
+                a["status"], a["resolved"] = "rejected", now().isoformat()
+                _save(data)
+                return True
+    return False
+
+
+# ---- business: leads (local mini-CRM) ----
+def add_lead(name: str, contact: str = "", source: str = "", notes: str = "",
+             follow_up: str | None = None) -> str:
+    name = " ".join(name.split())
+    if not name or len(name) > 120:
+        raise ValueError("Lead name is required (120 chars max).")
+    fu = parse_when(follow_up).isoformat() if follow_up else None
+    with _lock:
+        data = _load()
+        if len(data["leads"]) >= MAX_LEADS:
+            raise ValueError("Lead limit reached.")
+        lead = {"id": _new_id(), "name": name, "contact": contact.strip()[:200],
+                "source": source.strip()[:100], "stage": "new", "follow_up": fu,
+                "notes": [notes.strip()[:1000]] if notes.strip() else [],
+                "created": now().isoformat(), "updated": now().isoformat()}
+        data["leads"].append(lead)
+        _save(data)
+    return f"Lead {lead['id']} added: {name}"
+
+
+def update_lead(lead_id: str, stage: str | None = None, note: str | None = None,
+                follow_up: str | None = None) -> str:
+    if stage and stage not in LEAD_STAGES:
+        raise ValueError("stage must be one of: " + ", ".join(LEAD_STAGES))
+    fu = parse_when(follow_up).isoformat() if follow_up else None
+    with _lock:
+        data = _load()
+        for l in data["leads"]:
+            if l["id"] == lead_id:
+                if stage:
+                    l["stage"] = stage
+                if note and note.strip():
+                    l["notes"].append(note.strip()[:1000])
+                    del l["notes"][:-30]
+                if fu:
+                    l["follow_up"] = fu
+                l["updated"] = now().isoformat()
+                _save(data)
+                return f"Updated {l['name']} (stage: {l['stage']})."
+    return f"No lead with id {lead_id}."
+
+
+def list_leads(stage: str | None = None) -> list[dict]:
+    with _lock:
+        leads = _load()["leads"]
+    return [l for l in leads if stage is None or l["stage"] == stage]
+
+
+def leads_due() -> list[dict]:
+    current = now().isoformat()
+    return [l for l in list_leads()
+            if l["follow_up"] and l["follow_up"] <= current and l["stage"] not in ("won", "lost")]

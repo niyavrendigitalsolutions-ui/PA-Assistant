@@ -91,7 +91,7 @@ def test_learning_tools_wired_and_safe():
     names = tools.tool_names()
     for t in ("record_lesson", "save_skill", "get_skill", "propose_improvement"):
         assert f"mcp__assistant__{t}" in names
-    assert not any(bad in n for n in names for bad in ("send", "exec", "shell", "deploy"))
+    assert not any(bad in n for n in names for bad in ("shell", "deploy", "bash"))
     r = asyncio.run(tools.save_skill.handler({"name": "x", "description": "d", "steps": "1. a"}))
     assert "saved" in r["content"][0]["text"]
     r = asyncio.run(tools.record_lesson.handler({"text": "", "kind": ""}))

@@ -79,13 +79,18 @@ def test_tool_wrappers_return_errors_not_crashes():
     assert "Added task" in r["content"][0]["text"]
 
 
-def test_google_tools_only_when_configured(monkeypatch):
-    assert not google_tools.configured()
-    assert len(tools.active_tools()) == len(tools.ALL_TOOLS)
+def test_optional_tool_groups_only_when_configured(monkeypatch):
+    import business_tools
+    import sandbox_tools
+    base = len(tools.ALL_TOOLS) + len(business_tools.TOOLS)
+    assert not google_tools.configured() and not sandbox_tools.configured()
+    assert len(tools.active_tools()) == base
     for k in google_tools.REQUIRED_ENV:
         monkeypatch.setenv(k, "x")
-    assert len(tools.active_tools()) == len(tools.ALL_TOOLS) + len(google_tools.TOOLS)
-    assert not any("send" in n for n in tools.tool_names())  # drafts only, never send
+    assert len(tools.active_tools()) == base + len(google_tools.TOOLS)
+    monkeypatch.setenv("SANDBOX_URL", "https://sandbox.example")
+    monkeypatch.setenv("SANDBOX_TOKEN", "t" * 20)
+    assert len(tools.active_tools()) == base + len(google_tools.TOOLS) + len(sandbox_tools.TOOLS)
 
 
 def test_sandbox_options():

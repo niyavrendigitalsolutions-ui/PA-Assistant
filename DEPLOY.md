@@ -38,14 +38,47 @@ fly deploy
 
 Open `https://<your-fly-app>.fly.dev`, enter your access token when asked, and chat.
 
+## 3b. Business email limits (optional but recommended)
+
+Gmail sending needs the new `gmail.send` permission, so **re-run `python get_google_token.py`**
+and replace `GOOGLE_REFRESH_TOKEN`. Then set the limits (they are server settings, not something
+the assistant can edit):
+
+```bash
+fly secrets set \
+  TRUSTED_RECIPIENTS="you@example.com,@yourbestclient.com" \
+  MAX_EMAILS_PER_DAY=5 MAX_EMAILS_PER_RECIPIENT_PER_DAY=2
+```
+Anyone not on the trusted list, anything over the caps, and any email mentioning prices, payments,
+contracts, guarantees, refunds or legal terms waits in the **approval panel** at the top of the chat
+page. Set `AUTONOMY=off` to make every email wait.
+
+## 3c. Code sandbox (the full-stack developer)
+
+A second Fly app that runs code and holds **no secrets** except its own token.
+
+```bash
+python -c "import secrets; print(secrets.token_urlsafe(32))"      # SANDBOX_TOKEN
+# edit `app = ...` in fly.sandbox.toml to a unique name, then:
+fly launch --no-deploy --copy-config --config fly.sandbox.toml
+fly volumes create sandbox_data --region bom --size 3 --app <sandbox-app>
+fly secrets set SANDBOX_TOKEN=... --app <sandbox-app>
+fly deploy --config fly.sandbox.toml --app <sandbox-app>
+
+# tell the assistant where it is:
+fly secrets set SANDBOX_URL=https://<sandbox-app>.fly.dev SANDBOX_TOKEN=... --app <assistant-app>
+```
+Finished projects appear as **Download** buttons on the chat page.
+
 ## 4. Turn on auto-deploy from GitHub
 
 ```bash
 fly tokens create deploy      # copy the output
 ```
 GitHub repo > Settings > Secrets and variables > Actions > New secret: `FLY_API_TOKEN`.
+For the sandbox app run `fly tokens create deploy --app <sandbox-app>` and save it as `FLY_SANDBOX_API_TOKEN`.
 
-From now on every push to `main` runs the tests, then deploys. Pull requests only run tests.
+From now on every push to `main` runs the tests, then deploys both apps. Pull requests only run tests.
 
 ## Troubleshooting
 
