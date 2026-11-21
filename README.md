@@ -8,6 +8,8 @@ An AI personal assistant built on the [Claude Agent SDK for Python](https://gith
 - **Gmail:** search and read mail, and save **drafts**. It can never send.
 - **Google Calendar:** see your schedule and create events (it confirms first).
 - **Web search**, day planning, summaries, drafting messages.
+- **Learns from you:** it saves lessons from your corrections and preferences, and saves reusable *skills* (step-by-step procedures) after a task works, then reuses them. Ask "what have you learned?" to see everything, and tell it to forget anything.
+- **Tells you what it can't do:** when a task needs a tool or access it lacks, it logs a proposal (ask "show your improvement proposals") so you decide what to add next.
 
 ## Safety design
 
@@ -16,6 +18,17 @@ An AI personal assistant built on the [Claude Agent SDK for Python](https://gith
 - Email and web text is treated as untrusted information, never as instructions.
 - Drafts only: nothing is emailed on your behalf. Creating events needs your yes.
 - Secrets live in Fly secrets and GitHub secrets, never in the repo (`.env` is git-ignored).
+
+## How self-learning and self-updating work
+
+| What | How | Who decides |
+|---|---|---|
+| Lessons and skills | Saved in its data file, loaded into every new session | It saves them from **your** messages; you can delete any |
+| Capability gaps and ideas | Logged as proposals, never applied | You |
+| Dependency updates | Dependabot opens weekly pull requests; tests run on each | You merge |
+| Its own code and permissions | **Not self-modifying**, by design | You, through GitHub |
+
+It only learns from what you type. Text in emails, web pages and search results is treated as untrusted and never becomes a lesson or skill, so a malicious email can't quietly reprogram it. It can't rewrite its own code, widen its own access or deploy: an assistant that can read your inbox and edit itself is one bad email from being hijacked.
 
 ## Deploy (about 20 minutes, once)
 
@@ -47,6 +60,8 @@ python -m pytest                       # tests
 ## Known limits
 
 - Reminders only appear while the chat page is open. Nothing is pushed to your phone. If you close the page, they wait and show up when you next open it.
+- "Any task" means any task its tools allow: to-dos, notes, reminders, web research, Gmail drafts, Calendar. It can't run code, send email, make bookings or payments. When asked, it says so and logs the gap.
+- Lessons and skills load when a session starts; after a restart or reconnect they are all there.
 - One person, one Fly machine (the disk attaches to one machine). Chat history resets on restart; facts, tasks, notes and reminders persist.
 - The access token is the only lock. Use a long random one, share it with nobody, and keep the site on HTTPS (Fly does this).
 - Costs: a small Fly machine (a few dollars a month) plus Anthropic API usage per message.

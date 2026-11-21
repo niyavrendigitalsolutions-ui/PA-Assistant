@@ -14,7 +14,12 @@ DATA_DIR = Path(os.environ.get("ASSISTANT_DATA_DIR", "~/.personal_assistant")).e
 DATA_FILE = DATA_DIR / "data.json"
 _lock = threading.Lock()
 
-EMPTY = {"facts": {}, "tasks": [], "notes": [], "reminders": []}
+EMPTY = {"facts": {}, "tasks": [], "notes": [], "reminders": [],
+         "lessons": [], "skills": {}, "improvements": []}
+
+MAX_LESSONS, MAX_SKILLS, MAX_IMPROVEMENTS = 200, 100, 100
+LESSON_KINDS = ("preference", "correction", "how_to", "general")
+IMPROVEMENT_KINDS = ("capability_gap", "prompt_change", "bug", "other")
 
 
 def now() -> datetime:
@@ -206,3 +211,138 @@ def pop_due_reminders() -> list[dict]:
         if due:
             _save(data)
     return due
+
+
+# ---- self-learning: lessons ----
+def record_lesson(text: str, kind: str = "general") -> str:
+    """Save one short lesson learned from the user (preference, correction, how-to)."""
+    text = " ".join(text.split())
+    if not text:
+        raise ValueError("Lesson text is empty.")
+    if len(text) > 500:
+        raise ValueError("Keep a lesson to one short sentence or two (500 characters max).")
+    if kind not in LESSON_KINDS:
+        raise ValueError("kind must be one of: " + ", ".join(LESSON_KINDS))
+    with _lock:
+        data = _load()
+        if any(l["text"].lower() == text.lower() for l in data["lessons"]):
+            return "Already known."
+        data["lessons"].append({"id": _new_id(), "text": text, "kind": kind,
+                                "created": now().isoformat()})
+        del data["lessons"][:-MAX_LESSONS]  # keep the newest
+        _save(data)
+    return f"Learned: {text}"
+
+
+def list_lessons(limit: int = 30) -> list[dict]:
+    with _lock:
+        lessons = _load()["lessons"]
+    return list(reversed(lessons))[:limit]
+
+
+def delete_lesson(lesson_id: str) -> str:
+    with _lock:
+        data = _load()
+        before = len(data["lessons"])
+        data["lessons"] = [l for l in data["lessons"] if l["id"] != lesson_id]
+        _save(data)
+    return "Forgotten." if len(data["lessons"]) < before else f"No lesson with id {lesson_id}."
+
+
+# ---- self-learning: skills (reusable procedures) ----
+def _slug(name: str) -> str:
+    import re
+    slug = re.sub(r"[^a-z0-9]+", "-", name.lower()).strip("-")[:40]
+    if not slug:
+        raise ValueError("Skill name needs letters or numbers.")
+    return slug
+
+
+def save_skill(name: str, description: str, steps: str) -> str:
+    """Create or improve a reusable procedure."""
+    slug, description, steps = _slug(name), " ".join(description.split()), steps.strip()
+    if not description or len(description) > 200:
+        raise ValueError("Description is required, 200 characters max.")
+    if not steps or len(steps) > 4000:
+        raise ValueError("Steps are required, 4000 characters max.")
+    with _lock:
+        data = _load()
+        existing = data["skills"].get(slug)
+        if existing is None and len(data["skills"]) >= MAX_SKILLS:
+            raise ValueError("Skill limit reached; delete an old skill first.")
+        data["skills"][slug] = {
+            "description": description, "steps": steps,
+            "version": (existing["version"] + 1) if existing else 1,
+            "uses": existing["uses"] if existing else 0,
+            "created": existing["created"] if existing else now().isoformat(),
+            "updated": now().isoformat()}
+        _save(data)
+    return f"Skill '{slug}' {'updated' if existing else 'saved'}."
+
+
+def list_skills() -> list[dict]:
+    with _lock:
+        skills = _load()["skills"]
+    return [{"name": n, "description": s["description"], "uses": s["uses"]}
+            for n, s in sorted(skills.items())]
+
+
+def get_skill(name: str) -> dict:
+    slug = _slug(name)
+    with _lock:
+        data = _load()
+        skill = data["skills"].get(slug)
+        if skill is None:
+            raise ValueError(f"No skill named '{slug}'.")
+        skill["uses"] += 1
+        _save(data)
+    return {"name": slug, **skill}
+
+
+def delete_skill(name: str) -> str:
+    slug = _slug(name)
+    with _lock:
+        data = _load()
+        removed = data["skills"].pop(slug, None)
+        _save(data)
+    return "Deleted." if removed else f"No skill named '{slug}'."
+
+
+# ---- self-improvement proposals (for the user to review; never auto-applied) ----
+def add_improvement(title: str, detail: str, kind: str = "capability_gap") -> str:
+    title, detail = " ".join(title.split()), detail.strip()
+    if not title or len(title) > 120 or len(detail) > 1500:
+        raise ValueError("Title is required (120 chars max); detail 1500 chars max.")
+    if kind not in IMPROVEMENT_KINDS:
+        raise ValueError("kind must be one of: " + ", ".join(IMPROVEMENT_KINDS))
+    with _lock:
+        data = _load()
+        pending = [i for i in data["improvements"] if i["status"] == "pending"]
+        if any(i["title"].lower() == title.lower() for i in pending):
+            return "Already proposed."
+        if len(pending) >= MAX_IMPROVEMENTS:
+            raise ValueError("Too many pending proposals; ask the user to review them.")
+        data["improvements"].append({"id": _new_id(), "title": title, "detail": detail,
+                                     "kind": kind, "status": "pending",
+                                     "created": now().isoformat()})
+        _save(data)
+    return f"Logged for the user to review: {title}"
+
+
+def list_improvements(status: str = "pending") -> list[dict]:
+    with _lock:
+        items = _load()["improvements"]
+    return [i for i in items if status == "all" or i["status"] == status]
+
+
+def resolve_improvement(improvement_id: str, status: str = "done") -> str:
+    if status not in ("done", "dismissed"):
+        raise ValueError("status must be done or dismissed")
+    with _lock:
+        data = _load()
+        for i in data["improvements"]:
+            if i["id"] == improvement_id:
+                i["status"] = status
+                _save(data)
+                return f"Marked {status}."
+    return f"No proposal with id {improvement_id}."
