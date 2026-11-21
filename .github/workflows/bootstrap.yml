@@ -37,26 +37,21 @@ jobs:
             echo "::error::ASSISTANT_ACCESS_TOKEN must be at least 16 characters"; exit 1
           fi
 
-      - name: Resolve organization
-        run: |
-          # The dashboard URL slug and the command-line org name can differ (e.g. "personal").
-          for cand in "$ORG" personal; do
-            if flyctl apps list --org "$cand" --json >/dev/null 2>&1; then
-              echo "Using Fly org: $cand"
-              echo "ORG=$cand" >> "$GITHUB_ENV"
-              exit 0
-            fi
-          done
-          echo "::error::This token cannot see org '$ORG' or 'personal'. Set the FLY_ORG repository variable to the org name shown by: fly orgs list"
-          exit 1
-
       - name: Create apps (if missing)
         run: |
+          # The dashboard URL slug and the command-line org name can differ (e.g. "personal"),
+          # so try the configured org, then "personal", then whatever org the token belongs to.
+          create_app () {
+            for o in "$ORG" personal; do
+              if flyctl apps create "$1" --org "$o"; then return 0; fi
+            done
+            flyctl apps create "$1"
+          }
           for a in "$APP" "$SANDBOX_APP"; do
-            if flyctl apps list --org "$ORG" --json | jq -e --arg a "$a" '.[] | select(.Name == $a)' >/dev/null; then
+            if flyctl apps list --json | jq -e --arg a "$a" '.[] | select(.Name == $a)' >/dev/null; then
               echo "App $a already exists"
             else
-              flyctl apps create "$a" --org "$ORG"
+              create_app "$a"
             fi
           done
 
