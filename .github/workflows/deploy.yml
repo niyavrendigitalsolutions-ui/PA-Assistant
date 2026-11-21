@@ -10,7 +10,7 @@ jobs:
   test:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
@@ -29,7 +29,7 @@ jobs:
       APP: ${{ vars.FLY_APP_NAME || 'niyavren-assistant' }}
       REGION: ${{ vars.FLY_REGION || 'sin' }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: superfly/flyctl-actions/setup-flyctl@master
       - name: Deploy assistant
         if: ${{ env.FLY_API_TOKEN != '' }}
@@ -50,7 +50,7 @@ jobs:
       SANDBOX_APP: ${{ vars.FLY_SANDBOX_APP_NAME || 'niyavren-sandbox' }}
       REGION: ${{ vars.FLY_REGION || 'sin' }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: superfly/flyctl-actions/setup-flyctl@master
       - name: Deploy sandbox
         if: ${{ env.FLY_API_TOKEN != '' }}
