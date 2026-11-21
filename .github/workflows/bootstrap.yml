@@ -6,7 +6,7 @@ name: Bootstrap Fly apps
 #
 # Repository secrets used:   FLY_API_TOKEN (org token), ANTHROPIC_API_KEY, ASSISTANT_ACCESS_TOKEN
 #   optional:                GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET, GOOGLE_REFRESH_TOKEN
-# Repository variables (optional): FLY_ORG, FLY_APP_NAME, FLY_SANDBOX_APP_NAME, TRUSTED_RECIPIENTS
+# Repository variables (optional): FLY_ORG, FLY_REGION (default sin), FLY_APP_NAME, FLY_SANDBOX_APP_NAME, TRUSTED_RECIPIENTS
 
 on:
   workflow_dispatch:
@@ -25,6 +25,7 @@ jobs:
       APP: ${{ vars.FLY_APP_NAME || 'niyavren-assistant' }}
       SANDBOX_APP: ${{ vars.FLY_SANDBOX_APP_NAME || 'niyavren-sandbox' }}
       TRUSTED: ${{ vars.TRUSTED_RECIPIENTS }}
+      REGION: ${{ vars.FLY_REGION || 'sin' }}
     steps:
       - uses: superfly/flyctl-actions/setup-flyctl@master
 
@@ -61,7 +62,12 @@ jobs:
             if flyctl volumes list --app "$1" --json | jq -e --arg v "$2" '.[] | select(.name == $v)' >/dev/null; then
               echo "Volume $2 already exists on $1"
             else
-              flyctl volumes create "$2" --app "$1" --region bom --size "$3" --yes
+              if ! flyctl volumes create "$2" --app "$1" --region "$REGION" --size "$3" --yes; then
+                echo "::error::Could not create a volume in region '$REGION'. Regions available to this account:"
+                flyctl platform regions || true
+                echo "Set the FLY_REGION repository variable to one of them and re-run."
+                exit 1
+              fi
             fi
           }
           ensure_volume "$APP" assistant_data 1

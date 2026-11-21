@@ -39,7 +39,7 @@ Already pushed to `niyavrendigitalsolutions-ui/PA-Assistant`. Every push to `mai
 fly auth login
 # edit `app = ...` in fly.toml to a unique name, then:
 fly launch --no-deploy --copy-config
-fly volumes create assistant_data --region bom --size 1
+fly volumes create assistant_data --region sin --size 1
 
 python -c "import secrets; print(secrets.token_urlsafe(32))"   # this is your ASSISTANT_ACCESS_TOKEN
 
@@ -75,7 +75,7 @@ A second Fly app that runs code and holds **no secrets** except its own token.
 python -c "import secrets; print(secrets.token_urlsafe(32))"      # SANDBOX_TOKEN
 # edit `app = ...` in fly.sandbox.toml to a unique name, then:
 fly launch --no-deploy --copy-config --config fly.sandbox.toml
-fly volumes create sandbox_data --region bom --size 3 --app <sandbox-app>
+fly volumes create sandbox_data --region sin --size 3 --app <sandbox-app>
 fly secrets set SANDBOX_TOKEN=... --app <sandbox-app>
 fly deploy --config fly.sandbox.toml --app <sandbox-app>
 

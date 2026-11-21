@@ -1,6 +1,6 @@
 # Change `app` to a name nobody else has taken on Fly.io.
 app = "niyavren-assistant"
-primary_region = "bom"   # Mumbai. Others: sin, lhr, iad
+primary_region = "sin"   # Singapore. Mumbai (bom) is no longer offered for new volumes
 
 [build]
 

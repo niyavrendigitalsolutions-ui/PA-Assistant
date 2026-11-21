@@ -1,7 +1,7 @@
 # Second Fly app: the isolated code sandbox. It holds NO API keys, only SANDBOX_TOKEN.
 # Change `app` to a unique name.
 app = "niyavren-sandbox"
-primary_region = "bom"
+primary_region = "sin"   # Singapore. Mumbai (bom) is no longer offered for new volumes
 
 [build]
   dockerfile = "sandbox/Dockerfile"

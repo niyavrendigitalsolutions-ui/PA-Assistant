@@ -27,12 +27,15 @@ jobs:
     env:
       FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
       APP: ${{ vars.FLY_APP_NAME || 'niyavren-assistant' }}
+      REGION: ${{ vars.FLY_REGION || 'sin' }}
     steps:
       - uses: actions/checkout@v4
       - uses: superfly/flyctl-actions/setup-flyctl@master
       - name: Deploy assistant
         if: ${{ env.FLY_API_TOKEN != '' }}
-        run: flyctl deploy --remote-only --ha=false --app "$APP"
+        run: |
+          sed -i "s/^primary_region = .*/primary_region = \"$REGION\"/" fly.toml
+          flyctl deploy --remote-only --ha=false --app "$APP"
       - name: Skipped
         if: ${{ env.FLY_API_TOKEN == '' }}
         run: echo "FLY_API_TOKEN secret is not set yet, so nothing was deployed. Run the Bootstrap workflow after adding it."
@@ -45,12 +48,15 @@ jobs:
     env:
       FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
       SANDBOX_APP: ${{ vars.FLY_SANDBOX_APP_NAME || 'niyavren-sandbox' }}
+      REGION: ${{ vars.FLY_REGION || 'sin' }}
     steps:
       - uses: actions/checkout@v4
       - uses: superfly/flyctl-actions/setup-flyctl@master
       - name: Deploy sandbox
         if: ${{ env.FLY_API_TOKEN != '' }}
-        run: flyctl deploy --remote-only --ha=false --config fly.sandbox.toml --app "$SANDBOX_APP"
+        run: |
+          sed -i "s/^primary_region = .*/primary_region = \"$REGION\"/" fly.sandbox.toml
+          flyctl deploy --remote-only --ha=false --config fly.sandbox.toml --app "$SANDBOX_APP"
       - name: Skipped
         if: ${{ env.FLY_API_TOKEN == '' }}
         run: echo "FLY_API_TOKEN secret is not set yet, so nothing was deployed."
